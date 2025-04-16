@@ -35,9 +35,12 @@ def place_order(link, quantity):
         'quantity': quantity
     }
     try:
+        print("[DEBUG] Sending order with:", data)
         response = requests.post(SMM_API_URL, data=data)
+        print("[DEBUG] API Response:", response.text)
         return response.json()
     except Exception as e:
+        print("[ERROR]", e)
         return {"error": str(e)}
 
 def run_order_loop(chat_id, link, quantity, context):

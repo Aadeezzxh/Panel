@@ -3,10 +3,10 @@ import random
 import string
 import time
 from threading import Thread
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# CONFIGURATION
+# === CONFIGURATION ===
 API_KEY = "_BEMTA6aXO94WhJN9kpqXVh6u99PtD86"
 SERVICE_ID = "1425"
 SMM_API_URL = "https://panel.smmflw.com/api/v2"
@@ -35,23 +35,23 @@ def place_order(link, quantity):
         'quantity': quantity
     }
     try:
-        print("[DEBUG] Sending order with:", data)
+        print(f"[+] Placing order: {link} | Qty: {quantity}")
         response = requests.post(SMM_API_URL, data=data)
-        print("[DEBUG] API Response:", response.text)
+        print("[+] API Response:", response.text)
         return response.json()
     except Exception as e:
-        print("[ERROR]", e)
+        print("[ERROR] Order error:", e)
         return {"error": str(e)}
 
-def run_order_loop(chat_id, link, quantity, context):
+def run_order_loop(chat_id, link, quantity, bot):
     while True:
         mod_link = modify_link(link)
         result = place_order(mod_link, quantity)
         if 'order' in result:
-            context.bot.send_message(chat_id, f"Order Placed! ID: {result['order']}")
+            bot.send_message(chat_id, f"Order Placed! ID: {result['order']}")
         elif 'error' in result:
-            context.bot.send_message(chat_id, f"Error: {result['error']}")
-        time.sleep(10)
+            bot.send_message(chat_id, f"Error: {result['error']}")
+        time.sleep(1)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ALLOWED_USER_ID:
@@ -67,7 +67,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = update.message.text.strip()
-
     if uid in user_data:
         stage = user_data[uid].get("stage")
 
@@ -81,8 +80,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_data[uid]["quantity"] = int(msg)
                 await update.message.reply_text("Starting to place repeated orders...")
 
-                # Start loop in a separate thread
-                Thread(target=run_order_loop, args=(uid, user_data[uid]["link"], user_data[uid]["quantity"], context)).start()
+                thread = Thread(target=run_order_loop, args=(
+                    uid, user_data[uid]["link"], user_data[uid]["quantity"], context.bot
+                ))
+                thread.daemon = True
+                thread.start()
+
                 user_data[uid]["stage"] = "running"
             else:
                 await update.message.reply_text("Please enter a valid number.")
@@ -92,10 +95,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Send /start to begin.")
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    try:
+        print("[INFO] Starting bot...")
+        app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("[+] Bot is running...")
-    app.run_polling()
+        print("[INFO] Bot is now polling Telegram...")
+        app.run_polling(close_loop=False)
+    except Exception as e:
+        print("[FATAL ERROR]", e)
